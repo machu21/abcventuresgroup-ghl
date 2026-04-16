@@ -4,45 +4,45 @@ import { BatchDialerService } from '@/lib/services/BatchDialerService';
 import { LeadController } from '@/lib/controllers/LeadController';
 import { GHLService } from '@/lib/services/GHLService';
 
-const batchService = new BatchDialerService(process.env.BATCHDIALER_KEY!);
-const ghlService = new GHLService(process.env.GHL_API_KEY!);
-const controller = new LeadController(ghlService);
-
 export async function GET(request: Request) {
-  // 1. Security Check
+  // 1. Security Check: Compare the header to your Environment Variable
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response('Unauthorized', { status: 401 });
+  const expectedToken = `Bearer ${process.env.CRON_SECRET}`;
+
+  if (!process.env.CRON_SECRET || authHeader !== expectedToken) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
+    const batchService = new BatchDialerService(process.env.BATCHDIALER_KEY!);
+    const ghlService = new GHLService(process.env.GHL_API_KEY!);
+    const controller = new LeadController(ghlService);
+
+    // 2. Fetch the leads
     const leads = await batchService.fetchRecentTaggedLeads();
     let syncedCount = 0;
 
     for (const lead of leads) {
-      // Use the BatchDialer Lead ID as a unique key
-      const cacheKey = `synced_lead:${lead.id}`;
-      
-      // 2. Check if we've already synced this lead
+      const cacheKey = `synced_lead:${lead.id || lead._id}`;
       const alreadySynced = await kv.get(cacheKey);
 
       if (!alreadySynced) {
-        // 3. Process the lead through your OOP logic
         await controller.processLead(lead);
-
-        // 4. Mark as synced for 7 days (so we don't check forever)
+        // Mark as synced for 7 days
         await kv.set(cacheKey, 'true', { ex: 604800 }); 
         syncedCount++;
       }
     }
 
+    console.log(`[${new Date().toISOString()}] Sync complete. New: ${syncedCount}`);
+
     return NextResponse.json({ 
       success: true, 
-      newLeadsSynced: syncedCount,
-      totalChecked: leads.length 
+      processed: syncedCount 
     });
 
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("CRON ERROR:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

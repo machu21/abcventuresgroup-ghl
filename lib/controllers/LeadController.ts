@@ -9,20 +9,24 @@ export class LeadController {
     this.service = service;
   }
 
+  // src/lib/controllers/LeadController.ts
+
   async processLead(data: any) {
-    // 1. Clean the data if coming from BatchDialer (Normalize keys)
+    // 1. Map "QA HOT" to just "hot" so it passes Zod validation
+    let rawTag = (data.tag || data.disposition || "").toLowerCase();
+
+    // Strip "qa " if it exists
+    const cleanTag = rawTag.replace('qa ', '').trim();
+
     const normalizedData = {
       firstName: data.firstName || data.first_name,
       lastName: data.lastName || data.last_name,
       phone: data.phone?.replace(/\D/g, '') || data.phone_number?.replace(/\D/g, ''),
       email: data.email || '',
-      tag: data.tag?.toLowerCase()
+      tag: cleanTag // Now "qa hot" becomes "hot"
     };
 
-    // 2. Validate with Zod
     const validatedLead = LeadSchema.parse(normalizedData);
-    
-    // 3. Direct to Upsert Service
     return await this.service.upsertContact(validatedLead);
   }
 }
