@@ -1,7 +1,8 @@
+// src/lib/services/BatchDialerService.ts
 export class BatchDialerService {
   private apiKey: string;
-  // Standard BatchDialer API Base
-  private baseUrl = 'https://api.batchservice.com/api/v1/batchdialer';
+  // UPDATE: The host is batchservice.com
+  private baseUrl = 'https://api.batchservice.com/api/v1/batchdialer'; 
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -9,35 +10,33 @@ export class BatchDialerService {
 
   async fetchRecentTaggedLeads() {
     try {
-      // Note: We use the 'contacts' endpoint as BatchDialer treats leads as contacts
+      // The endpoint for listing contacts is usually /contacts
       const response = await fetch(`${this.baseUrl}/contacts`, {
         method: 'GET',
         headers: {
-          'X-ApiKey': this.apiKey, // Correct header for BatchDialer
+          'X-ApiKey': this.apiKey, // BatchDialer specific header
           'Content-Type': 'application/json'
         }
       });
 
       if (!response.ok) {
-        throw new Error(`BatchDialer API Error: ${response.statusText}`);
+        const errorBody = await response.text();
+        throw new Error(`BatchDialer API Error (${response.status}): ${errorBody}`);
       }
 
       const data = await response.json();
-      
-      // BatchDialer usually returns an array in a 'data' or 'contacts' property
+      // Adjust this based on their actual data property (usually 'data' or 'contacts')
       const contacts = data.data || data.contacts || [];
 
-      // Filter for leads that have the tags: hot, warm, or cold
       return contacts.filter((contact: any) => {
-        // Handle cases where tags might be an array or a single string
         const leadTags = Array.isArray(contact.tags) 
           ? contact.tags.map((t: string) => t.toLowerCase())
           : [contact.tag?.toLowerCase()];
 
-        return leadTags.some((tag: string) => ['hot', 'warm', 'cold'].includes(tag));
+        return leadTags.some((tag: string) => ['hot', 'warm', 'cold', 'qa hot', 'qa warm', 'qa cold'].includes(tag));
       });
-    } catch (error) {
-      console.error("BatchDialer Fetch Error:", error);
+    } catch (error: any) {
+      console.error("BatchDialer Fetch Error:", error.message);
       return [];
     }
   }
