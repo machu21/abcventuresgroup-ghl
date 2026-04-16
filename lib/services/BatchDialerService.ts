@@ -1,7 +1,7 @@
 export class BatchDialerService {
   private apiKey: string;
   // Standard BatchDialer API Base
-  private baseUrl = 'https://api.batchdialer.com/api/v1'; 
+  private baseUrl = 'https://api.batchservice.com/api/v1/batchdialer';
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
