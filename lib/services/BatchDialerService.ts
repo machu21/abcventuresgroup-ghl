@@ -25,9 +25,12 @@ export class BatchDialerService {
       // Response shape: { value: [...], Count: number }
       const contacts = data.value || [];
 
-      // Filter for contacts where the disposition matches your buttons
       return contacts.filter((contact: any) => {
-        const status = (contact.disposition || "").toLowerCase();
+        // Check multiple possible fields where BatchDialer stores the "QA HOT" status
+        const status = (contact.disposition || contact.last_disposition || contact.status || "").toLowerCase();
+
+        console.log(`Checking contact: ${contact.firstName}, Status found: ${status}`); // This will show in Vercel Logs
+
         return ['qa hot', 'qa warm', 'qa cold', 'hot', 'warm', 'cold'].includes(status);
       });
 
