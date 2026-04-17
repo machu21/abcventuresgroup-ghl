@@ -25,51 +25,49 @@ export async function GET(req: Request) {
 async function syncBatchToGHL() {
   const BATCH_KEY = "638aec5a-0c14-4bc6-a9ba-50af23fcc4b0";
   
-  const response = await fetch('https://api.batchservice.com/batchdialer/v1/contacts?order_by=updated_at&order_dir=desc&limit=20', {
-    headers: { 'X-ApiKey': BATCH_KEY }
+  // 1. Fetch from BatchDialer
+  const response = await fetch('https://api.batchservice.com/batchdialer/v1/contacts?order_by=updated_at&order_dir=desc&limit=10', {
+    headers: { 'X-ApiKey': BATCH_KEY },
+    signal: AbortSignal.timeout(5000) // Timeout BatchDialer after 5 seconds
   });
   
-  if (!response.ok) {
-    throw new Error(`BatchDialer API failed: ${response.statusText}`);
-  }
+  if (!response.ok) throw new Error(`BatchDialer down: ${response.status}`);
 
   const result = await response.json();
-  
-  // CRITICAL FIX: Safely handle if 'data' is missing or not an array
-  const leads = Array.isArray(result.data) ? result.data : 
-                Array.isArray(result.results) ? result.results : []; 
+  const leads = Array.isArray(result.data) ? result.data : result.results || []; 
 
   if (leads.length === 0) return 0;
 
   const allowedTags = ['QA COLD', 'QA HOT', 'QA WARM'];
-  let count = 0;
+  
+  // 2. Filter leads first
+  const validLeads = leads.filter((lead: any) => {
+    const tag = (lead.last_disposition_name || lead.last_disposition || "").toString().toUpperCase();
+    return allowedTags.includes(tag);
+  });
 
-  for (const lead of leads) {
-    // Safely get the disposition tag
-    const rawTag = lead.last_disposition_name || lead.last_disposition || "";
-    const cleanTag = rawTag.toString().toUpperCase();
-    
-    if (allowedTags.includes(cleanTag)) {
-      try {
-        await addToGHL(lead, cleanTag);
-        count++;
-      } catch (ghlErr) {
-        console.error("GHL Sync Error for one lead:", ghlErr);
-        // Continue to next lead instead of crashing the whole script
-      }
-    }
-  }
-  return count;
+  // 3. Fire all GHL requests at the same time (Parallel)
+  // This is much faster than the 'for...of' loop
+  const syncPromises = validLeads.map((lead: any) => {
+    const tag = (lead.last_disposition_name || lead.last_disposition || "").toUpperCase();
+    return addToGHL(lead, tag);
+  });
+
+  await Promise.allSettled(syncPromises); 
+  
+  return validLeads.length;
 }
 
 async function addToGHL(contact: any, tag: string) {
   const API_KEY = "pit-36de15db-0c6f-4939-a50a-85711f26df17";
   const LOCATION_ID = "I0M7RpC6J5qdQsAC6WVi";
 
-  // Skip if no phone or email (GHL will reject these anyway)
-  if (!contact?.phone && !contact?.email && !contact?.phoneNumber) return;
+  // Quick validation to avoid unnecessary fetch calls
+  const phone = contact?.phone || contact?.phoneNumber || '';
+  const email = contact?.email || '';
+  if (!phone && !email) return;
 
-  const res = await fetch('https://services.leadconnectorhq.com/contacts/', {
+  return fetch('https://services.leadconnectorhq.com/contacts/', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${API_KEY}`,
@@ -80,15 +78,11 @@ async function addToGHL(contact: any, tag: string) {
       locationId: LOCATION_ID,
       firstName: contact?.first_name || contact?.firstName || 'Batch',
       lastName: contact?.last_name || contact?.lastName || 'Lead',
-      phone: contact?.phone || contact?.phoneNumber || '',
-      email: contact?.email || '',
+      phone,
+      email,
       tags: [tag], 
       source: 'BatchDialer Cron'
-    })
-  });
-
-  if (!res.ok) {
-    const errorBody = await res.text();
-    console.error("GHL API Error Details:", errorBody);
-  }
+    }),
+    signal: AbortSignal.timeout(4000) // Timeout GHL after 4 seconds
+  }).catch(e => console.error("Individual lead fetch failed", e.message));
 }
