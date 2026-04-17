@@ -2,7 +2,7 @@ export class BatchDialerService {
   private apiKey: string;
   private baseUrl = 'https://app.batchdialer.com/api';
   // We add the campaign ID here. (Later, you can move this to Vercel Env Vars!)
-  private campaignId = '353263'; 
+  private campaignId = '353263';
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -10,11 +10,10 @@ export class BatchDialerService {
 
   async fetchRecentTaggedLeads() {
     try {
-      // 1. Combine your parameters: Target the campaign and grab the 50 most recent
-      // Note: Depending on BatchDialer's API, adding &sort=-updatedAt is a common way to get newest first
-      const url = `${this.baseUrl}/contacts?campaignId=${this.campaignId}&limit=50`;
-      
-      console.log(`Fetching from: ${url}`); // Let's log this so you can see it in Vercel
+      // 1. Use the EXACT parameter structure from your PowerShell script
+      const url = `${this.baseUrl}/contacts?campaignId=${this.campaignId}&page=1&pageSize=50`;
+
+      console.log(`Fetching from: ${url}`);
 
       const response = await fetch(url, {
         method: 'GET',
@@ -30,14 +29,16 @@ export class BatchDialerService {
       }
 
       const data = await response.json();
-      const contacts = data.value || [];
-      
+
+      // 2. LOG THE RAW RESPONSE: This is the ultimate truth-teller!
+      console.log("RAW BATCH API RESPONSE:", JSON.stringify(data).substring(0, 300));
+
+      const contacts = data.value || data.contacts || data.data || [];
+
       console.log(`Found ${contacts.length} contacts in Campaign ${this.campaignId}`);
 
-      // 2. Filter for your FAR AGENTS targets
       return contacts.filter((contact: any) => {
         const status = (contact.disposition || contact.dispositionName || contact.status || "").toLowerCase();
-        
         return ['qa hot', 'qa warm', 'qa cold', 'hot', 'warm', 'cold'].includes(status);
       });
 

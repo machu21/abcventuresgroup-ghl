@@ -1,63 +1,36 @@
 import { NextResponse } from 'next/server';
-// We are keeping the import but will bypass KV for now to prevent crashes
-import { kv } from '@vercel/kv'; 
-import { BatchDialerService } from '@/lib/services/BatchDialerService';
 import { LeadController } from '@/lib/controllers/LeadController';
 import { GHLService } from '@/lib/services/GHLService';
 
-export async function GET(request: Request) {
-  // 1. Security Check
-  const authHeader = request.headers.get('authorization');
-  const expectedToken = `Bearer ${process.env.CRON_SECRET}`;
-
-  if (!process.env.CRON_SECRET || authHeader !== expectedToken) {
-    console.error("CRON AUTH FAILED: Check your CRON_SECRET in Vercel and Cron-job.org");
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
+// Notice we changed GET to POST
+export async function POST(request: Request) {
   try {
-    const batchService = new BatchDialerService(process.env.BATCHDIALER_KEY!);
+    // 1. Catch the data BatchDialer throws at us
+    const leadData = await request.json();
+    
+    // DEBUG: This will print the EXACT payload BatchDialer sends so we can map it perfectly!
+    console.log("🚨 WEBHOOK RECEIVED:", JSON.stringify(leadData));
+
+    // 2. Initialize GHL Service
     const ghlService = new GHLService(process.env.GHL_API_KEY!);
     const controller = new LeadController(ghlService);
 
-    // 2. Fetch the leads from BatchDialer
-    const leads = await batchService.fetchRecentTaggedLeads();
-    
-    // DEBUG LOG: See if the API is actually returning anything
-    console.log(`TOTAL LEADS FETCHED FROM BATCHDIALER: ${leads.length}`);
+    // 3. Send it directly to GoHighLevel
+    // Note: We'll refine the data mapping once we see the log, but this passes it to your controller
+    await controller.processLead(leadData);
 
-    let syncedCount = 0;
+    console.log(`✅ Successfully pushed ${leadData.first_name || 'Lead'} to GHL`);
 
-    for (const lead of leads) {
-      try {
-        /* NOTE: KV is bypassed here until you set up your database.
-           GHL's internal "Upsert" logic will prevent duplicate contacts, 
-           but it will log an "Update" every time this cron runs.
-        */
-        
-        // Push lead to GoHighLevel
-        await controller.processLead(lead);
-        
-        syncedCount++;
-        console.log(`SUCCESS: Synced lead ${lead.firstName || 'Unknown'} (${lead.id || 'No ID'})`);
-
-      } catch (leadError: any) {
-        console.error(`LEAD PROCESSING ERROR [${lead.id}]:`, leadError.message);
-        // Continue to the next lead even if one fails
-        continue;
-      }
-    }
-
-    console.log(`[${new Date().toISOString()}] Sync complete. Total Synced this run: ${syncedCount}`);
-
-    return NextResponse.json({ 
-      success: true, 
-      processed: syncedCount,
-      fetched: leads.length
-    });
+    // 4. Tell BatchDialer we received it successfully
+    return NextResponse.json({ success: true, message: "Webhook caught and processed" });
 
   } catch (error: any) {
-    console.error("CRON GLOBAL ERROR:", error.message);
+    console.error("❌ WEBHOOK ERROR:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+// We leave a GET route just so you can test if the URL is online in your browser
+export async function GET() {
+  return NextResponse.json({ status: "Webhook receiver is live and waiting for BatchDialer POST requests." });
 }
