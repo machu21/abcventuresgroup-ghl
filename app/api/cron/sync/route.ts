@@ -71,14 +71,28 @@ async function addToGHL(callRecord: any, tag: string) {
   const API_KEY = "pit-36de15db-0c6f-4939-a50a-85711f26df17";
   const LOCATION_ID = "I0M7RpC6J5qdQsAC6WVi";
 
-  
   const primaryPhone = callRecord.customerNumber || '';
   const contactInfo = callRecord.contact || {};
-  const email = contactInfo.email || '';
+  const rawEmail = contactInfo.email || '';
 
-  if (!primaryPhone && !email) {
+  if (!primaryPhone && !rawEmail) {
       console.log(`Skipping: No phone or email found in call record`);
       return;
+  }
+
+  // 1. Build the base payload without the email
+  const payload: any = {
+    locationId: LOCATION_ID,
+    firstName: contactInfo.firstname || 'Batch',
+    lastName: contactInfo.lastname || 'Lead',
+    phone: primaryPhone,
+    tags: [tag], 
+    source: 'BatchDialer'
+  };
+
+  // 2. Only attach the email field if it actually has text in it
+  if (rawEmail && rawEmail.trim() !== '') {
+    payload.email = rawEmail.trim();
   }
 
   try {
@@ -89,15 +103,7 @@ async function addToGHL(callRecord: any, tag: string) {
         'Content-Type': 'application/json',
         'Version': '2021-04-15'
       },
-      body: JSON.stringify({
-        locationId: LOCATION_ID,
-        firstName: contactInfo.firstname || 'Batch',
-        lastName: contactInfo.lastname || 'Lead',
-        phone: primaryPhone,
-        email: email,
-        tags: [tag], 
-        source: 'BatchDialer'
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
