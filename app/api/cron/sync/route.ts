@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 
 export async function GET(req: Request) {
-  // 1. Security Check
-  // In cron-job.org, add a custom header or a query param. 
-  // Let's use a simple query param for ease: ?key=mysecret
   const { searchParams } = new URL(req.url);
   const key = searchParams.get('key');
 
