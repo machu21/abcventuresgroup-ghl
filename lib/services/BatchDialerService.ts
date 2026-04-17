@@ -1,6 +1,8 @@
 export class BatchDialerService {
   private apiKey: string;
   private baseUrl = 'https://app.batchdialer.com/api';
+  // We add the campaign ID here. (Later, you can move this to Vercel Env Vars!)
+  private campaignId = '353263'; 
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -8,7 +10,13 @@ export class BatchDialerService {
 
   async fetchRecentTaggedLeads() {
     try {
-      const response = await fetch(`${this.baseUrl}/contacts`, {
+      // 1. Combine your parameters: Target the campaign and grab the 50 most recent
+      // Note: Depending on BatchDialer's API, adding &sort=-updatedAt is a common way to get newest first
+      const url = `${this.baseUrl}/contacts?campaignId=${this.campaignId}&limit=50`;
+      
+      console.log(`Fetching from: ${url}`); // Let's log this so you can see it in Vercel
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'X-ApiKey': this.apiKey,
@@ -23,31 +31,14 @@ export class BatchDialerService {
 
       const data = await response.json();
       const contacts = data.value || [];
+      
+      console.log(`Found ${contacts.length} contacts in Campaign ${this.campaignId}`);
 
-      // 1. LOG THE RAW DATA (Check your Vercel Logs for this!)
-      if (contacts.length > 0) {
-        console.log("DEBUG: First Contact Keys:", Object.keys(contacts[0]));
-        console.log("DEBUG: First Contact Sample:", JSON.stringify(contacts[0]));
-      } else {
-        console.log("DEBUG: BatchDialer returned 0 contacts total. Check if the API Key has access to any campaigns.");
-      }
-
-      // 2. FILTER LOGIC
+      // 2. Filter for your FAR AGENTS targets
       return contacts.filter((contact: any) => {
-        // We look for any field that might contain our tag
-        const disposition = (contact.dispositionName || contact.disposition || contact.last_disposition || "").toLowerCase();
-        const status = (contact.status || contact.statusName || "").toLowerCase();
+        const status = (contact.disposition || contact.dispositionName || contact.status || "").toLowerCase();
         
-        // Match against our FAR AGENTS target list
-        const targets = ['qa hot', 'qa warm', 'qa cold', 'hot', 'warm', 'cold'];
-        
-        const isMatch = targets.includes(disposition) || targets.includes(status);
-
-        if (isMatch) {
-          console.log(`MATCH FOUND: ${contact.firstName} with Status: ${disposition || status}`);
-        }
-
-        return isMatch;
+        return ['qa hot', 'qa warm', 'qa cold', 'hot', 'warm', 'cold'].includes(status);
       });
 
     } catch (error: any) {
