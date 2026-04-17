@@ -5,7 +5,8 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const key = searchParams.get('key');
 
-  if (key !== 'abcgroup') {
+  // Pulls the secret from your .env file
+  if (key !== process.env.CRON_SECRET) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -23,7 +24,9 @@ export async function GET(req: Request) {
 }
 
 async function syncBatchToGHL() {
-  const BATCH_KEY = "638aec5a-0c14-4bc6-a9ba-50af23fcc4b0";
+  const BATCH_KEY = process.env.BATCH_API_KEY;
+  if (!BATCH_KEY) throw new Error("Missing BATCH_API_KEY in environment variables.");
+
   const BATCH_URL = 'https://app.batchdialer.com/api/v2/cdrs?page=1&pageSize=10';
   
   let result;
@@ -40,7 +43,6 @@ async function syncBatchToGHL() {
   if (calls.length === 0) return 0;
 
   // 1. The Translation Dictionary
-  // Left side is BatchDialer. Right side is GoHighLevel.
   const tagMap: { [key: string]: string } = {
     'QA COLD': 'cold lead',
     'QA WARM': 'warm lead',
@@ -58,7 +60,7 @@ async function syncBatchToGHL() {
   // 3. Translate the tag before sending to GHL
   const syncPromises = validCalls.map((call: any) => {
     const rawDisposition = (call.disposition || "").toString().toUpperCase();
-    const translatedTag = tagMap[rawDisposition]; // Converts 'QA COLD' to 'cold lead'
+    const translatedTag = tagMap[rawDisposition]; 
     
     return addToGHL(call, translatedTag); 
   });
@@ -68,8 +70,13 @@ async function syncBatchToGHL() {
 }
 
 async function addToGHL(callRecord: any, tag: string) {
-  const API_KEY = "pit-36de15db-0c6f-4939-a50a-85711f26df17";
-  const LOCATION_ID = "I0M7RpC6J5qdQsAC6WVi";
+  const API_KEY = process.env.GHL_API_KEY;
+  const LOCATION_ID = process.env.GHL_LOCATION_ID;
+
+  if (!API_KEY || !LOCATION_ID) {
+    console.error("Missing GHL environment variables.");
+    return;
+  }
 
   const primaryPhone = callRecord.customerNumber || '';
   const contactInfo = callRecord.contact || {};
