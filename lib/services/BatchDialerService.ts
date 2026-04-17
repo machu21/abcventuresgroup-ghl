@@ -22,16 +22,32 @@ export class BatchDialerService {
       }
 
       const data = await response.json();
-      // Response shape: { value: [...], Count: number }
       const contacts = data.value || [];
 
+      // 1. LOG THE RAW DATA (Check your Vercel Logs for this!)
+      if (contacts.length > 0) {
+        console.log("DEBUG: First Contact Keys:", Object.keys(contacts[0]));
+        console.log("DEBUG: First Contact Sample:", JSON.stringify(contacts[0]));
+      } else {
+        console.log("DEBUG: BatchDialer returned 0 contacts total. Check if the API Key has access to any campaigns.");
+      }
+
+      // 2. FILTER LOGIC
       return contacts.filter((contact: any) => {
-        // Check multiple possible fields where BatchDialer stores the "QA HOT" status
-        const status = (contact.disposition || contact.last_disposition || contact.status || "").toLowerCase();
+        // We look for any field that might contain our tag
+        const disposition = (contact.dispositionName || contact.disposition || contact.last_disposition || "").toLowerCase();
+        const status = (contact.status || contact.statusName || "").toLowerCase();
+        
+        // Match against our FAR AGENTS target list
+        const targets = ['qa hot', 'qa warm', 'qa cold', 'hot', 'warm', 'cold'];
+        
+        const isMatch = targets.includes(disposition) || targets.includes(status);
 
-        console.log(`Checking contact: ${contact.firstName}, Status found: ${status}`); // This will show in Vercel Logs
+        if (isMatch) {
+          console.log(`MATCH FOUND: ${contact.firstName} with Status: ${disposition || status}`);
+        }
 
-        return ['qa hot', 'qa warm', 'qa cold', 'hot', 'warm', 'cold'].includes(status);
+        return isMatch;
       });
 
     } catch (error: any) {
