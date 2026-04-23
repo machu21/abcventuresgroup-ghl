@@ -2,11 +2,9 @@ import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
 // Initialize the Gemini client
-// It will automatically pick up process.env.GEMINI_API_KEY
 const ai = new GoogleGenAI({});
 
 async function generateAIComps(contactData: any) {
-  // Extract the address from standard GHL fields (or custom fields if you use them)
   const address = contactData.address1 || "the subject property";
   const city = contactData.city || "";
   const state = contactData.state || "";
@@ -37,7 +35,6 @@ async function generateAIComps(contactData: any) {
   }
 }
 
-// Function to push the generated comps back to GHL as a Note
 async function addNoteToGHLContact(contactId: string, noteBody: string) {
   const apiKey = process.env.GHL_API_KEY;
   
@@ -49,7 +46,7 @@ async function addNoteToGHLContact(contactId: string, noteBody: string) {
     },
     body: JSON.stringify({
       body: noteBody,
-      userId: "" // Optional: Assign the note to a specific GHL user ID
+      userId: "" 
     }),
   });
 
@@ -63,28 +60,46 @@ async function addNoteToGHLContact(contactId: string, noteBody: string) {
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
+    
+    // DEBUG: Print the exact data GHL sent us into the Vercel Logs
+    console.log("INCOMING GHL PAYLOAD:", JSON.stringify(payload, null, 2));
 
-    const tags = payload.tags || '';
     const contactId = payload.contact_id || payload.id;
-
     if (!contactId) {
       return NextResponse.json({ error: 'No contact ID provided' }, { status: 400 });
     }
 
-    const hasAiCompsTag = typeof tags === 'string' 
-      ? tags.toLowerCase().includes('ai comps') 
-      : tags.includes('ai comps');
+    // BULLETPROOF TAG CHECKING
+    let hasAiCompsTag = false;
+    const rawTags = payload.tags;
+
+    if (rawTags) {
+      if (typeof rawTags === 'string') {
+        // If GHL sends a comma-separated string: "buyer, ai comps, hot lead"
+        const lowerTags = rawTags.toLowerCase();
+        hasAiCompsTag = lowerTags.includes('ai comps') || lowerTags.includes('ai-comps');
+      } else if (Array.isArray(rawTags)) {
+        // If GHL sends an array: ["buyer", "ai comps"]
+        hasAiCompsTag = rawTags.some(tag => {
+          const t = String(tag).toLowerCase();
+          return t.includes('ai comps') || t.includes('ai-comps');
+        });
+      }
+    }
 
     if (!hasAiCompsTag) {
       return NextResponse.json({ message: 'Tag not matched. Ignored.' }, { status: 200 });
     }
 
-    // Generate Comps using Gemini 2.5 Flash
+    console.log(`Tag matched for contact ${contactId}. Generating comps...`);
+
+    // Generate Comps using Gemini
     const aiComps = await generateAIComps(payload);
 
     // Send the note back to GHL
     await addNoteToGHLContact(contactId, `**Gemini 2.5 Flash Comps Report**\n\n${aiComps}`);
 
+    console.log("Successfully saved note to GHL!");
     return NextResponse.json({ success: true, message: 'AI Comps generated and saved to GHL.' });
 
   } catch (error) {
