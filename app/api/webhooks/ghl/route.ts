@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { set } from 'zod';
 
 const ai = new GoogleGenAI({});
 
@@ -68,6 +69,8 @@ async function generateAIComps(contactData: any) {
   }
 }
 
+
+
 // 3. Post Note back to GHL v2
 async function addNoteToGHLContact(contactId: string, noteBody: string) {
   const apiKey = process.env.GHL_API_KEY;
@@ -92,13 +95,22 @@ async function addNoteToGHLContact(contactId: string, noteBody: string) {
   }
 }
 
+const processedIds = new Set<string>();
 // 4. Main Webhook Handler
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
+    const contactId = payload.contact_id || payload.id;
+
+    if (processedIds.has(contactId)) {
+      console.log(`Duplicate webhook ignored for contact: ${contactId}`);
+      return NextResponse.json({ message: 'Duplicate ignored.' }, { status: 200 });
+    }
+    processedIds.add(contactId);
+    setTimeout(() => processedIds.delete(contactId), 10000);
+
     console.log("INCOMING WEBHOOK ID:", payload.id || payload.contact_id);
 
-    const contactId = payload.contact_id || payload.id;
     if (!contactId) {
       return NextResponse.json({ error: 'No contact ID provided' }, { status: 400 });
     }
@@ -132,7 +144,7 @@ export async function POST(request: Request) {
     console.log(`Tag matched! Generating comps for ${fullContactData.address1}...`);
 
     const aiComps = await generateAIComps(fullContactData);
-    await addNoteToGHLContact(contactId, `**Gemini 2.5 Flash Comps Report**\n\n${aiComps}`);
+    await addNoteToGHLContact(contactId, `**SVD AI Comps:**\n\n${aiComps}`);
 
     console.log("Success!");
     return NextResponse.json({ success: true, message: 'AI Comps generated and saved.' });
