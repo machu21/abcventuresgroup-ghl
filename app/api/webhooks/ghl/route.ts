@@ -3,9 +3,18 @@ import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({});
 
-// 1. NEW: Fetch the complete contact profile directly from GHL
+
 async function getFullContact(contactId: string) {
   const apiKey = process.env.GHL_API_KEY;
+  
+  // DEBUG 1: Make sure Next.js is actually seeing the key
+  if (!apiKey) {
+    console.error("FATAL: GHL_API_KEY is undefined. Vercel is not reading the environment variable.");
+    throw new Error("Missing API Key");
+  } else {
+    // Print just the first 5 characters to verify it loaded correctly
+    console.log(`Loaded API Key starting with: ${apiKey.substring(0, 5)}...`);
+  }
   
   const response = await fetch(`https://rest.gohighlevel.com/v1/contacts/${contactId}`, {
     method: 'GET',
@@ -15,11 +24,14 @@ async function getFullContact(contactId: string) {
   });
 
   if (!response.ok) {
+    // DEBUG 2: Capture the exact error message from GoHighLevel
+    const errorText = await response.text();
+    console.error(`GHL 401 ERROR DETAILS: ${errorText}`);
     throw new Error(`Failed to fetch contact details from GHL. Status: ${response.status}`);
   }
 
   const data = await response.json();
-  return data.contact; // GHL v1 API returns data nested inside a 'contact' object
+  return data.contact; 
 }
 
 // 2. Generate the Comps using Gemini
