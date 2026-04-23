@@ -5,7 +5,6 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const key = searchParams.get('key');
 
-  // Pulls the secret from your .env file
   if (key !== process.env.CRON_SECRET) {
     return new Response('Unauthorized', { status: 401 });
   }
@@ -87,7 +86,7 @@ async function addToGHL(callRecord: any, tag: string) {
       return;
   }
 
-  // 1. Build the base payload without the email
+  // 1. Build the base payload
   const payload: any = {
     locationId: LOCATION_ID,
     firstName: contactInfo.firstname || 'Batch',
@@ -97,10 +96,16 @@ async function addToGHL(callRecord: any, tag: string) {
     source: 'BatchDialer'
   };
 
-  // 2. Only attach the email field if it actually has text in it
+  // 2. Attach email if it exists
   if (rawEmail && rawEmail.trim() !== '') {
     payload.email = rawEmail.trim();
   }
+
+  // 3. Attach Address data (Mapping BatchDialer keys to GHL API keys)
+  if (contactInfo.address) payload.address1 = contactInfo.address;
+  if (contactInfo.city) payload.city = contactInfo.city;
+  if (contactInfo.state) payload.state = contactInfo.state;
+  if (contactInfo.zip) payload.postalCode = contactInfo.zip;
 
   try {
     const res = await fetch('https://services.leadconnectorhq.com/contacts/', {
