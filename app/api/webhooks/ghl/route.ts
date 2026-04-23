@@ -3,38 +3,36 @@ import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({});
 
-
+// 1. Fetch Full Contact from GHL v2
 async function getFullContact(contactId: string) {
   const apiKey = process.env.GHL_API_KEY;
-  
-  // DEBUG 1: Make sure Next.js is actually seeing the key
+
   if (!apiKey) {
-    console.error("FATAL: GHL_API_KEY is undefined. Vercel is not reading the environment variable.");
+    console.error("FATAL: GHL_API_KEY is undefined.");
     throw new Error("Missing API Key");
   } else {
-    // Print just the first 5 characters to verify it loaded correctly
     console.log(`Loaded API Key starting with: ${apiKey.substring(0, 5)}...`);
   }
-  
-  const response = await fetch(`https://rest.gohighlevel.com/v1/contacts/${contactId}`, {
+
+  const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
+      'Version': '2021-07-28',
     }
   });
 
   if (!response.ok) {
-    // DEBUG 2: Capture the exact error message from GoHighLevel
     const errorText = await response.text();
-    console.error(`GHL 401 ERROR DETAILS: ${errorText}`);
-    throw new Error(`Failed to fetch contact details from GHL. Status: ${response.status}`);
+    console.error(`GHL ERROR DETAILS: ${errorText}`);
+    throw new Error(`Failed to fetch contact. Status: ${response.status}`);
   }
 
   const data = await response.json();
-  return data.contact; 
+  return data.contact;
 }
 
-// 2. Generate the Comps using Gemini
+// 2. Generate Comps using Gemini
 async function generateAIComps(contactData: any) {
   const address = contactData.address1 || "";
   const city = contactData.city || "";
@@ -70,23 +68,26 @@ async function generateAIComps(contactData: any) {
   }
 }
 
-// 3. Post the Note back to GHL
+// 3. Post Note back to GHL v2
 async function addNoteToGHLContact(contactId: string, noteBody: string) {
   const apiKey = process.env.GHL_API_KEY;
-  
-  const response = await fetch(`https://rest.gohighlevel.com/v1/contacts/${contactId}/notes`, {
+
+  const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      'Version': '2021-07-28',
     },
     body: JSON.stringify({
       body: noteBody,
-      userId: "" 
+      userId: ""
     }),
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`GHL Note Error: ${errorText}`);
     throw new Error("GHL API Error when adding note");
   }
 }
@@ -102,7 +103,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No contact ID provided' }, { status: 400 });
     }
 
-    // Fetch the FULL data from GHL so we don't rely on the skinny webhook payload
     const fullContactData = await getFullContact(contactId);
     console.log("FETCHED FULL CONTACT:", JSON.stringify({
       name: fullContactData.name,
@@ -110,7 +110,6 @@ export async function POST(request: Request) {
       tags: fullContactData.tags
     }));
 
-    // Check tags safely
     let hasAiCompsTag = false;
     const rawTags = fullContactData.tags;
 
@@ -132,10 +131,7 @@ export async function POST(request: Request) {
 
     console.log(`Tag matched! Generating comps for ${fullContactData.address1}...`);
 
-    // Generate Comps
     const aiComps = await generateAIComps(fullContactData);
-
-    // Save Note
     await addNoteToGHLContact(contactId, `**Gemini 2.5 Flash Comps Report**\n\n${aiComps}`);
 
     console.log("Success!");
